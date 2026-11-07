@@ -12,8 +12,9 @@ import { FAQSection } from './components/FAQSection';
 import { FinalCTA } from './components/FinalCTA';
 import { Footer } from './components/Footer';
 import { CheckoutModal } from './components/CheckoutModal';
-import { LoginModal } from './components/LoginModal';
 import { LegalModal } from './components/LegalModal';
+import { LoginPage } from './components/auth/LoginPage';
+import { SignupPage } from './components/auth/SignupPage';
 import { CustomCursor } from './components/motion/CustomCursor';
 import { ReadingProgressBar } from './components/ReadingProgressBar';
 import { SoundController } from './components/audio/SoundController';
@@ -22,7 +23,7 @@ import { useSound } from './hooks/useSound';
 
 export default function App() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [authPage, setAuthPage] = useState<'login' | 'signup' | null>(null);
   const [legalType, setLegalType] = useState<'privacy' | 'terms' | null>(null);
   const { playClick, playModalOpen } = useSound();
 
@@ -33,7 +34,7 @@ export default function App() {
 
   const handleOpenLogin = () => {
     playModalOpen();
-    setLoginOpen(true);
+    setAuthPage('login');
   };
 
   const handleScrollToDemo = () => {
@@ -48,6 +49,17 @@ export default function App() {
     playClick();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  if (authPage) {
+    const sharedProps = {
+      onBack: () => setAuthPage(null),
+      onSwitchPage: setAuthPage,
+    };
+
+    return authPage === 'login'
+      ? <LoginPage {...sharedProps} />
+      : <SignupPage {...sharedProps} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#080808] text-white selection:bg-[#F59E0B]/30 selection:text-[#FBBF24] relative overflow-x-hidden">
@@ -134,12 +146,6 @@ export default function App() {
       <CheckoutModal
         isOpen={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
-      />
-
-      <LoginModal
-        isOpen={loginOpen}
-        onClose={() => setLoginOpen(false)}
-        onOpenCheckout={handleOpenCheckout}
       />
 
       <LegalModal
