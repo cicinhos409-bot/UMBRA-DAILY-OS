@@ -26,7 +26,7 @@ type AppPage = 'login' | 'signup' | 'dashboard' | null;
 
 function isAppRoute(): boolean {
   const route = window.location.hash;
-  return window.location.pathname === '/focus' || route.startsWith('#/projetos/') || ['#/tarefas', '#/projetos', '#/focus', '#/dashboard', '#/login', '#/signup'].includes(route);
+  return window.location.pathname === '/focus' || window.location.pathname === '/ideas' || window.location.pathname === '/calendario' || window.location.pathname === '/encerramento' || route.startsWith('#/projetos/') || route.startsWith('#/tarefas/') || ['#/tarefas', '#/projetos', '#/focus', '#/ideas', '#/daily-ai', '#/calendario', '#/encerramento', '#/dashboard', '#/login', '#/signup'].includes(route);
 }
 
 export default function App() {

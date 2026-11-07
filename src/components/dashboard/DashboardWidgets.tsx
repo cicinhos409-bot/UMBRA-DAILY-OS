@@ -346,13 +346,17 @@ interface ScheduleProps {
   onAdd: () => void;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onOpenPlanner?: () => void;
 }
 
-export const ScheduleCard: React.FC<ScheduleProps> = ({ schedule, onAdd, onToggle, onDelete }) => (
+export const ScheduleCard: React.FC<ScheduleProps> = ({ schedule, onAdd, onToggle, onDelete, onOpenPlanner }) => (
   <section className={cardClass}>
     <div className="flex items-center justify-between gap-3">
       <div><h2 className="text-sm font-semibold text-white">Agenda de hoje</h2><p className={`mt-1 text-xs ${mutedText}`}>Seu dia, no seu ritmo.</p></div>
-      <button type="button" onClick={onAdd} className="rounded-lg p-2 text-[#A1A1AA] hover:bg-white/5 hover:text-[#FBBF24]" aria-label="Adicionar atividade à agenda"><Plus className="h-4 w-4" /></button>
+      <div className="flex items-center gap-1">
+        {onOpenPlanner && <button type="button" onClick={onOpenPlanner} className="rounded-lg px-2 py-1.5 text-[10px] text-[#FBBF24] hover:bg-white/5">Abrir Planner</button>}
+        <button type="button" onClick={onAdd} className="rounded-lg p-2 text-[#A1A1AA] hover:bg-white/5 hover:text-[#FBBF24]" aria-label="Adicionar atividade à agenda"><Plus className="h-4 w-4" /></button>
+      </div>
     </div>
     {schedule.length ? (
       <div className="mt-4 space-y-1">

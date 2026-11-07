@@ -15,6 +15,19 @@ export const dashboardService = {
     const state = parsed as Partial<DashboardState>;
     const today = localDateKey();
     const savedMission = state.mission;
+    const savedIdeaCategories = (Array.isArray(state.ideaCategories) ? state.ideaCategories : initialDashboardState.ideaCategories)
+      .map((category) => ({ ...category, icon: category.icon || '✦' }));
+    const legacyIdeaCategories = [...new Set((Array.isArray(state.ideas) ? state.ideas : [])
+      .map((idea) => (idea as DashboardState['ideas'][number]).category?.trim())
+      .filter((name): name is string => Boolean(name))
+      .filter((name) => !savedIdeaCategories.some((category) => category.name.toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR'))))]
+      .map((name) => ({
+        id: `legacy-${name.toLocaleLowerCase('pt-BR').replace(/[^a-z0-9]+/g, '-')}`,
+        name,
+        color: '#71717A',
+        icon: '✦',
+        createdAt: 0,
+      }));
     return {
       ...initialDashboardState,
       ...state,
@@ -22,7 +35,7 @@ export const dashboardService = {
         ? [...new Set(state.dailyPriorityIds)].filter((id) => state.tasks!.some((task) => task.id === id && !task.archivedAt)).slice(0, 3)
         : state.tasks!.filter((task) => task.day === today && !task.archivedAt).slice(0, 3).map((task) => task.id),
       mission: savedMission
-        ? savedMission.day && savedMission.day !== today
+        ? savedMission.day && savedMission.day < today
           ? null
           : { ...savedMission, day: savedMission.day || today }
         : null,
@@ -39,6 +52,7 @@ export const dashboardService = {
           startAt: legacyTask.startAt || '',
           actualMinutes: legacyTask.actualMinutes || 0,
           actualSeconds: legacyTask.actualSeconds ?? (legacyTask.actualMinutes || 0) * 60,
+          scheduledDay: legacyTask.scheduledDay || (legacyTask.scheduledAt ? legacyTask.day || today : ''),
           recurrence: legacyTask.recurrence || 'Não repetir',
           subtasks: legacyTask.subtasks || [],
           notes: legacyTask.notes || '',
@@ -68,7 +82,54 @@ export const dashboardService = {
         };
       }),
       schedule: Array.isArray(state.schedule)
-        ? state.schedule.map((item) => ({ ...item, day: item.day || today }))
+        ? state.schedule.map((item) => ({ ...item, day: item.day || today, durationMinutes: Math.max(1, Number(item.durationMinutes) || 30), type: item.type || 'Personalizado', description: item.description || '', taskId: item.taskId || '', projectId: item.projectId || '', notes: item.notes || '' }))
+        : [],
+      ideas: Array.isArray(state.ideas)
+        ? state.ideas.map((idea) => {
+            const legacyIdea = idea as DashboardState['ideas'][number];
+            const attachments = Array.isArray(legacyIdea.attachments) ? legacyIdea.attachments : [];
+            const legacyAttachment = legacyIdea.attachmentName && legacyIdea.attachmentData
+              ? [{
+                  id: `legacy-${legacyIdea.id}`,
+                  name: legacyIdea.attachmentName,
+                  mimeType: 'application/octet-stream',
+                  size: 0,
+                  data: legacyIdea.attachmentData,
+                  createdAt: legacyIdea.createdAt || Date.now(),
+                }]
+              : [];
+            const hasLink = Boolean(legacyIdea.link);
+            return {
+              ...legacyIdea,
+              title: legacyIdea.title || '',
+              text: legacyIdea.text || '',
+              link: legacyIdea.link || '',
+              category: legacyIdea.category || '',
+              projectId: legacyIdea.projectId || '',
+              type: legacyIdea.type || (hasLink && !legacyIdea.text ? 'Link' : 'Ideia'),
+              tags: Array.isArray(legacyIdea.tags) ? legacyIdea.tags : [],
+              collectionIds: Array.isArray(legacyIdea.collectionIds) ? legacyIdea.collectionIds : [],
+              favorite: Boolean(legacyIdea.favorite),
+              status: legacyIdea.status || (legacyIdea.deletedAt ? 'trash' : legacyIdea.archivedAt ? 'archived' : 'inbox'),
+              createdAt: legacyIdea.createdAt || Date.now(),
+              updatedAt: legacyIdea.updatedAt || legacyIdea.createdAt || Date.now(),
+              archivedAt: legacyIdea.archivedAt || null,
+              deletedAt: legacyIdea.deletedAt || null,
+              attachments: [...attachments, ...legacyAttachment],
+              conversionTaskIds: Array.isArray(legacyIdea.conversionTaskIds) ? legacyIdea.conversionTaskIds : [],
+              conversionProjectIds: Array.isArray(legacyIdea.conversionProjectIds) ? legacyIdea.conversionProjectIds : [],
+              conversions: Array.isArray(legacyIdea.conversions) ? legacyIdea.conversions : [],
+              activity: Array.isArray(legacyIdea.activity) ? legacyIdea.activity : [],
+            };
+          })
+        : [],
+      ideaCategories: [...savedIdeaCategories, ...legacyIdeaCategories],
+      ideaCollections: Array.isArray(state.ideaCollections)
+        ? state.ideaCollections.map((collection) => ({
+            ...collection,
+            ideaIds: Array.isArray(collection.ideaIds) ? collection.ideaIds : [],
+            updatedAt: collection.updatedAt || collection.createdAt || Date.now(),
+          }))
         : [],
       focusHistory: Array.isArray(state.focusHistory)
         ? state.focusHistory.map((session) => ({
@@ -92,6 +153,9 @@ export const dashboardService = {
 
   clear(): void {
     window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem('umbra-daily-ai-v1');
+    window.localStorage.removeItem('umbra-planner-preferences-v1');
+    window.localStorage.removeItem('umbra-daily-reviews-v1');
   },
 };
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays, Check, CheckCircle2, ChevronLeft,
   ChevronRight, Circle, Clock3, KanbanSquare, List, Plus, Search, Trash2,
@@ -22,6 +22,7 @@ interface TaskManagerPageProps {
   projects: DashboardProject[];
   focusHistory: FocusSession[];
   initialProjectId?: string;
+  initialTaskId?: string | null;
   onSave: (task: TaskForm, existing?: DashboardTask, createAnother?: boolean) => void;
   onDelete: (task: DashboardTask) => void;
   onUpdate: (task: DashboardTask, action: string) => void;
@@ -69,7 +70,7 @@ function emptyTask(): TaskForm {
 }
 
 export const TaskManagerPage: React.FC<TaskManagerPageProps> = ({
-  tasks, dailyPriorityIds, projects, focusHistory, initialProjectId = '', onSave, onDelete, onUpdate, onStartFocus, onOpenProject, onToggleDailyPriority, onNotify,
+  tasks, dailyPriorityIds, projects, focusHistory, initialProjectId = '', initialTaskId = null, onSave, onDelete, onUpdate, onStartFocus, onOpenProject, onToggleDailyPriority, onNotify,
 }) => {
   const [view, setView] = useState<TaskView>('Lista');
   const [filter, setFilter] = useState<TaskFilter>('Todas');
@@ -168,6 +169,12 @@ export const TaskManagerPage: React.FC<TaskManagerPageProps> = ({
     const key = localDateKey(date);
     return { date, key, tasks: calendarTasks.filter((task) => task.dueAt === key) };
   });
+
+  useEffect(() => {
+    if (!initialTaskId) return;
+    const task = tasks.find((item) => item.id === initialTaskId);
+    if (task) setDetails(task);
+  }, [initialTaskId, tasks]);
   const weekStart = new Date(month);
   weekStart.setDate(weekStart.getDate() - weekStart.getDay());
   const calendarDays = calendarMode === 'Mês'

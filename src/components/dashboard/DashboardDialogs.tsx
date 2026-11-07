@@ -151,60 +151,6 @@ export const ScheduleDialog: React.FC<{
   );
 };
 
-export const IdeaDialog: React.FC<{
-  projects: DashboardProject[];
-  onClose: () => void;
-  onSave: (idea: { text: string; link: string; category: string; projectId: string; attachmentName?: string; attachmentData?: string }) => void;
-}> = ({ projects, onClose, onSave }) => {
-  const [text, setText] = useState('');
-  const [link, setLink] = useState('');
-  const [category, setCategory] = useState('Geral');
-  const [projectId, setProjectId] = useState('');
-  const [attachment, setAttachment] = useState<{ name: string; data: string } | null>(null);
-  const [attachmentError, setAttachmentError] = useState('');
-
-  const readAttachment = (file?: File) => {
-    setAttachmentError('');
-    if (!file) {
-      setAttachment(null);
-      return;
-    }
-    if (file.size > 1_000_000) {
-      setAttachmentError('O arquivo deve ter no máximo 1 MB para ser salvo neste navegador.');
-      setAttachment(null);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') {
-        setAttachmentError('Não foi possível ler este arquivo.');
-        return;
-      }
-      setAttachment({ name: file.name, data: reader.result });
-    };
-    reader.onerror = () => setAttachmentError('Não foi possível ler este arquivo.');
-    reader.readAsDataURL(file);
-  };
-
-  return (
-    <DialogFrame title="Capturar ideia" description="Registre agora e volte ao que estava fazendo. A ideia fica salva neste navegador." onClose={onClose}>
-      <form className="mt-5 space-y-4" onSubmit={(event) => { event.preventDefault(); onSave({ text: text.trim(), link: link.trim(), category, projectId, attachmentName: attachment?.name, attachmentData: attachment?.data }); }}>
-        <label className={labelClass}>Ideia<textarea autoFocus required maxLength={2000} rows={4} value={text} onChange={(event) => setText(event.target.value)} placeholder="Anote antes que escape..." className={`${fieldClass} resize-y`} /></label>
-        <label className={labelClass}>Link (opcional)<input type="url" value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://" className={fieldClass} /></label>
-        <label className={labelClass}>Imagem ou arquivo (opcional, até 1 MB)<input type="file" onChange={(event) => readAttachment(event.target.files?.[0])} className={`${fieldClass} file:mr-3 file:border-0 file:bg-transparent file:text-xs file:text-[#FBBF24]`} /></label>
-        {attachment && <p className="text-[11px] text-[#A1A1AA]">Anexo: {attachment.name}</p>}
-        {attachmentError && <p role="alert" className="text-xs text-red-300">{attachmentError}</p>}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className={labelClass}>Categoria<select value={category} onChange={(event) => setCategory(event.target.value)} className={selectClass}><option>Geral</option><option>Produto</option><option>Conteúdo</option><option>Pessoal</option><option>Pesquisa</option></select></label>
-          <label className={labelClass}>Projeto<ProjectSelect projects={projects} value={projectId} onChange={setProjectId} /></label>
-        </div>
-        <DialogActions submitLabel="Salvar ideia" onClose={onClose} />
-      </form>
-    </DialogFrame>
-  );
-};
-
 export const FocusDialog: React.FC<{
   tasks: DashboardTask[];
   initialTaskId?: string;

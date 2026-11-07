@@ -1,11 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, Check, Lightbulb, LoaderCircle, RotateCcw, ShieldAlert, Sparkles } from 'lucide-react';
+import { AlertCircle, Check, LoaderCircle, MoonStar, RotateCcw, ShieldAlert, Sparkles } from 'lucide-react';
 import { createId, localDateKey } from './dashboardService';
 import { DashboardHeader } from './DashboardHeader';
 import { DashboardSidebar, type DashboardModule } from './DashboardSidebar';
-import {
-  IdeaDialog, MissionDialog, RecoveryDialog, ScheduleDialog, TaskDialog,
-} from './DashboardDialogs';
+import { MissionDialog, ScheduleDialog, TaskDialog } from './DashboardDialogs';
 import {
   AlertsCard, DailyAiCard, EmptyModule, FocusCard, MissionCard, NextActionCard,
   PrioritiesCard, ProgressCard, ProjectsCard, ScheduleCard,
@@ -14,12 +12,17 @@ import { useDashboard } from './useDashboard';
 import { TaskManagerPage } from './TaskManagerPage';
 import { ProjectManagerPage } from './ProjectManagerPage';
 import { FocusModePage } from './FocusModePage';
+import { IdeaCaptureDialog, IdeaVaultPage } from './IdeaVaultPage';
+import { DailyAiPage } from './DailyAiPage';
+import { CalendarPlannerPage } from './CalendarPlannerPage';
+import { DailyClosePage } from './DailyClosePage';
+import { dailyReviewService, type DailyReview, type PendingAction } from './dailyReviewService';
 import type {
-  ActiveFocusSession, DashboardProject, DashboardTask, DailyMission, FocusSession, FocusSessionConfig, Idea, ProjectPhase,
+  ActiveFocusSession, DashboardProject, DashboardTask, DailyMission, FocusSession, FocusSessionConfig, Idea, IdeaCategory, IdeaCollection, ProjectPhase,
   ScheduleItem,
 } from './types';
 
-type DialogName = 'mission' | 'task' | 'schedule' | 'idea' | 'recovery' | null;
+type DialogName = 'mission' | 'task' | 'schedule' | 'idea' | null;
 
 interface DashboardPageProps {
   onExit: () => void;
@@ -32,9 +35,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
   const [activeModule, setActiveModule] = useState<DashboardModule>(() => {
     const path = window.location.hash;
     if (window.location.pathname === '/focus') return 'Focus Mode';
-    if (path === '#/tarefas') return 'Tarefas';
+    if (window.location.pathname === '/ideas') return 'Cofre de ideias';
+    if (path === '#/daily-ai') return 'Daily AI';
+    if (window.location.pathname === '/calendario' || path === '#/calendario') return 'Calendário';
+    if (window.location.pathname === '/encerramento' || path === '#/encerramento') return 'Encerramento do dia';
+    if (path === '#/tarefas' || path.startsWith('#/tarefas/')) return 'Tarefas';
     if (path === '#/projetos' || path.startsWith('#/projetos/')) return 'Projetos';
     if (path === '#/focus') return 'Focus Mode';
+    if (path === '#/ideas') return 'Cofre de ideias';
     return 'Dashboard';
   });
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => {
@@ -54,16 +62,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
   const [onboardingPriorities, setOnboardingPriorities] = useState(['', '', '']);
   const [onboardingGoal, setOnboardingGoal] = useState('120');
   const [onboardingProject, setOnboardingProject] = useState('');
-  const [newIdeaId, setNewIdeaId] = useState('');
   const [taskProjectFilterId, setTaskProjectFilterId] = useState('');
+  const [taskOpenId, setTaskOpenId] = useState<string | null>(() => {
+    const match = window.location.hash.match(/^#\/tarefas\/([^/]+)$/);
+    return match ? decodeURIComponent(match[1]) : null;
+  });
   const [focusInitialTaskId, setFocusInitialTaskId] = useState('');
   const [focusInitialProjectId, setFocusInitialProjectId] = useState('');
+  const [dailyReviews, setDailyReviews] = useState<DailyReview[]>([]);
 
-  const navigateModule = (module: DashboardModule, projectId?: string) => {
+  const navigateModule = (module: DashboardModule, projectId?: string, taskId?: string) => {
     setActiveModule(module);
     setSelectedProjectId(module === 'Projetos' ? projectId || null : null);
     setTaskProjectFilterId(module === 'Tarefas' ? projectId || '' : '');
-    const path = module === 'Tarefas' ? '/#/tarefas' : module === 'Projetos' ? (projectId ? `/#/projetos/${encodeURIComponent(projectId)}` : '/#/projetos') : module === 'Focus Mode' ? '/focus' : '/#/dashboard';
+    setTaskOpenId(module === 'Tarefas' ? taskId || null : null);
+    const path = module === 'Tarefas' ? (taskId ? `/#/tarefas/${encodeURIComponent(taskId)}` : '/#/tarefas') : module === 'Projetos' ? (projectId ? `/#/projetos/${encodeURIComponent(projectId)}` : '/#/projetos') : module === 'Cofre de ideias' ? '/ideas' : module === 'Focus Mode' ? '/focus' : module === 'Daily AI' ? '/#/daily-ai' : module === 'Calendário' ? '/calendario' : module === 'Encerramento do dia' ? '/encerramento' : '/#/dashboard';
     window.history.pushState({}, '', path);
   };
 
@@ -73,15 +86,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
       if (window.location.pathname === '/focus' || path === '#/focus') {
         setActiveModule('Focus Mode');
         setSelectedProjectId(null);
-      } else if (path === '#/tarefas') {
+      } else if (path === '#/tarefas' || path.startsWith('#/tarefas/')) {
         setActiveModule('Tarefas');
         setSelectedProjectId(null);
+        const match = path.match(/^#\/tarefas\/([^/]+)$/);
+        setTaskOpenId(match ? decodeURIComponent(match[1]) : null);
       } else if (path === '#/projetos' || path.startsWith('#/projetos/')) {
         setActiveModule('Projetos');
         const match = path.match(/^#\/projetos\/([^/]+)$/);
         setSelectedProjectId(match ? decodeURIComponent(match[1]) : null);
       } else if (path === '#/dashboard') {
         setActiveModule('Dashboard');
+        setSelectedProjectId(null);
+      } else if (window.location.pathname === '/ideas' || path === '#/ideas') {
+        setActiveModule('Cofre de ideias');
+        setSelectedProjectId(null);
+      } else if (path === '#/daily-ai') {
+        setActiveModule('Daily AI');
+        setSelectedProjectId(null);
+      } else if (window.location.pathname === '/calendario' || path === '#/calendario') {
+        setActiveModule('Calendário');
+        setSelectedProjectId(null);
+      } else if (window.location.pathname === '/encerramento' || path === '#/encerramento') {
+        setActiveModule('Encerramento do dia');
         setSelectedProjectId(null);
       }
     };
@@ -200,8 +227,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
     }
   }, [data.activeFocus, elapsedFocusMs, activeModule]);
 
+  const today = localDateKey();
+  const missionForToday = data.mission?.day === today ? data.mission : null;
+
+  useEffect(() => {
+    if (!loaded || error) return;
+    try {
+      setDailyReviews(dailyReviewService.load());
+    } catch (reviewError) {
+      notify(reviewError instanceof Error ? reviewError.message : 'Não foi possível carregar o histórico de encerramentos.');
+    }
+  }, [loaded, error]);
+
+  useEffect(() => {
+    if (!loaded || !dailyReviews.length || (data.mission && data.mission.day >= today)) return;
+    const yesterday = localDateKey(new Date(new Date(`${today}T12:00:00`).getTime() - 86_400_000));
+    const prior = dailyReviews.find((review) => review.status === 'completed' && review.reviewDate === yesterday && review.tomorrowMission.trim());
+    if (!prior) return;
+    const now = Date.now();
+    update((current) => ({
+      ...current,
+      mission: { title: prior.tomorrowMission, projectId: '', dueAt: '', completed: false, day: today },
+      dailyPriorityIds: prior.tomorrowPriorityIds.filter((id) => current.tasks.some((task) => task.id === id && !task.archivedAt && task.status !== 'Concluído')).slice(0, 3),
+      tasks: current.tasks.map((task) => prior.tomorrowPriorityIds.includes(task.id) ? {
+        ...task,
+        day: today,
+        history: [{ id: createId(), action: 'Planejada durante o encerramento do dia anterior', createdAt: now }, ...task.history],
+        updatedAt: now,
+      } : task),
+      nextDayPlan: null,
+    }));
+  }, [loaded, dailyReviews, data.mission, today, update]);
+
+  const todayReview = dailyReviews.find((review) => review.reviewDate === today);
   const todayFocusMinutes = useMemo(() => {
-    const today = localDateKey();
     const historySeconds = data.focusHistory
       .filter((session) => session.mode !== 'Descanso' && localDateKey(new Date(session.startedAt)) === today)
       .reduce((total, session) => total + (session.actualFocusSeconds ?? session.durationMinutes * 60), 0);
@@ -211,19 +270,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
     return Math.floor(historySeconds / 60) + activeMinutes;
   }, [data.focusHistory, data.activeFocus, elapsedFocusMs]);
 
-  const today = localDateKey();
   const todayTasks = data.dailyPriorityIds
     .map((id) => data.tasks.find((task) => task.id === id))
     .filter((task): task is DashboardTask => Boolean(task && task.day === today && !task.archivedAt));
   const todaySchedule = [
     ...data.schedule.filter((item) => item.day === today),
-    ...todayTasks.filter((task) => task.scheduledAt).map((task) => ({
+    ...todayTasks.filter((task) => task.scheduledAt && (task.scheduledDay || task.day) === today && !data.schedule.some((item) => item.taskId === task.id)).map((task) => ({
       id: `task-${task.id}`,
-      day: today,
+      day: task.scheduledDay || task.day,
       title: task.title,
       time: task.scheduledAt,
       durationMinutes: task.estimatedMinutes,
       completed: task.status === 'Concluído',
+      taskId: task.id,
+      type: 'Tarefa' as const,
     })),
   ];
   const pendingTasks = todayTasks.filter((task) => !task.completed && (
@@ -248,12 +308,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
       .map((task) => `Tarefa atrasada: ${task.title}.`);
     const dueSoon = data.tasks.filter((task) => !task.completed && (task.dueAt === today || task.dueAt === tomorrow));
     if (dueSoon.length) messages.push(`${dueSoon.length} tarefa(s) com prazo hoje ou amanhã.`);
-    if (!data.mission && data.onboardingComplete) messages.push('Sua missão de hoje ainda não foi definida.');
+    if (!missionForToday && data.onboardingComplete) messages.push('Sua missão de hoje ainda não foi definida.');
     const blockedTasks = data.tasks.filter((task) => task.day === today && !task.completed && task.dependsOnId && !data.tasks.find((dependency) => dependency.id === task.dependsOnId)?.completed);
     if (blockedTasks.length) messages.push(`${blockedTasks.length} prioridade(s) aguardando outra tarefa.`);
     if (data.tasks.some((task) => !task.completed && !task.scheduledAt)) messages.push('Há prioridades sem horário planejado.');
     return messages;
-  }, [data.tasks, data.mission, data.onboardingComplete, today]);
+  }, [data.tasks, missionForToday, data.onboardingComplete, today]);
 
   const projectName = (id: string) => data.projects.find((project) => project.id === id)?.name;
 
@@ -333,6 +393,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
       tasks: current.tasks
         .filter((item) => item.id !== task.id)
         .map((item) => item.dependsOnId === task.id ? { ...item, dependsOnId: '' } : item),
+      schedule: current.schedule.filter((item) => item.taskId !== task.id),
       dailyPriorityIds: current.dailyPriorityIds.filter((id) => id !== task.id),
       activeFocus: current.activeFocus?.taskId === task.id ? { ...current.activeFocus, taskId: null } : current.activeFocus,
       projects: task.projectId
@@ -352,6 +413,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
       ...current,
       projects: current.projects.filter((item) => item.id !== project.id),
       tasks: current.tasks.map((task) => task.projectId === project.id ? { ...task, projectId: '' } : task),
+      schedule: current.schedule.map((item) => item.projectId === project.id ? { ...item, projectId: '' } : item),
       mission: current.mission?.projectId === project.id ? { ...current.mission, projectId: '' } : current.mission,
       ideas: current.ideas.map((idea) => idea.projectId === project.id ? { ...idea, projectId: '' } : idea),
     }));
@@ -413,12 +475,243 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
     notify('Atividade adicionada à agenda.');
   };
 
+  const savePlannerBlock = (block: ScheduleItem) => update((current) => ({
+    ...current,
+    schedule: current.schedule.some((item) => item.id === block.id)
+      ? current.schedule.map((item) => item.id === block.id ? block : item)
+      : [...current.schedule, block],
+  }));
+
+  const deletePlannerBlock = (block: ScheduleItem) => update((current) => ({
+    ...current,
+    schedule: current.schedule.filter((item) => item.id !== block.id),
+  }));
+
+  const scheduleTaskFromPlanner = (task: DashboardTask, day: string, time: string, durationMinutes: number) => {
+    const now = Date.now();
+    const item: ScheduleItem = {
+      id: createId(),
+      day,
+      title: task.title,
+      time,
+      durationMinutes,
+      completed: task.status === 'Concluído',
+      type: 'Tarefa',
+      description: task.description,
+      taskId: task.id,
+      projectId: task.projectId,
+      notes: task.notes,
+    };
+    update((current) => ({
+      ...current,
+      schedule: [...current.schedule.filter((block) => block.taskId !== task.id), item],
+      tasks: current.tasks.map((itemTask) => itemTask.id === task.id ? {
+        ...itemTask,
+        scheduledAt: time,
+        scheduledDay: day,
+        estimatedMinutes: durationMinutes,
+        history: [{ id: createId(), action: `Agendada para ${day} às ${time}`, createdAt: now }, ...itemTask.history],
+        updatedAt: now,
+      } : itemTask),
+    }));
+    notify(`Tarefa “${task.title}” adicionada ao Planner.`);
+  };
+
+  const updatePlannerTaskSchedule = (task: DashboardTask, day: string, time: string, durationMinutes: number) => {
+    const now = Date.now();
+    update((current) => ({
+      ...current,
+      tasks: current.tasks.map((item) => item.id === task.id ? {
+        ...item,
+        scheduledAt: time,
+        scheduledDay: time ? day : '',
+        estimatedMinutes: durationMinutes,
+        history: [{ id: createId(), action: time ? `Agendamento alterado para ${day} às ${time}` : 'Agendamento removido', createdAt: now }, ...item.history],
+        updatedAt: now,
+      } : item),
+      schedule: time
+        ? current.schedule.map((block) => block.taskId === task.id ? { ...block, day, time, durationMinutes } : block)
+        : current.schedule.filter((block) => block.taskId !== task.id),
+    }));
+  };
+
   const saveIdea = (idea: Omit<Idea, 'id' | 'createdAt'>) => {
-    const savedIdea = { ...idea, id: createId(), createdAt: Date.now() };
+    const now = Date.now();
+    const savedIdea: Idea = {
+      ...idea,
+      id: createId(),
+      createdAt: now,
+      updatedAt: now,
+      type: idea.type || 'Ideia',
+      tags: idea.tags || [],
+      collectionIds: idea.collectionIds || [],
+      favorite: idea.favorite || false,
+      status: idea.status || 'inbox',
+      archivedAt: idea.archivedAt || null,
+      deletedAt: idea.deletedAt || null,
+      attachments: idea.attachments || [],
+      conversionTaskIds: idea.conversionTaskIds || [],
+      conversionProjectIds: idea.conversionProjectIds || [],
+      conversions: idea.conversions || [],
+      activity: idea.activity?.length ? idea.activity : [{ id: createId(), action: 'Ideia capturada', createdAt: now }],
+    };
     update((current) => ({ ...current, ideas: [savedIdea, ...current.ideas] }));
-    setNewIdeaId(savedIdea.id);
-    setDialog(null);
-    notify('Ideia salva no cofre.');
+    notify('Ideia salva na caixa de entrada.');
+    return savedIdea.id;
+  };
+
+  const updateIdeaRecord = (idea: Idea, action = 'Ideia atualizada') => {
+    const now = Date.now();
+    const savedIdea = {
+      ...idea,
+      updatedAt: now,
+      activity: [{ id: createId(), action, createdAt: now }, ...(idea.activity || [])].slice(0, 50),
+    };
+    update((current) => {
+      const ideas = current.ideas.map((item) => item.id === idea.id ? savedIdea : item);
+      return {
+        ...current,
+        ideas,
+        ideaCollections: current.ideaCollections.map((collection) => ({
+          ...collection,
+          ideaIds: ideas.filter((item) => (item.collectionIds || []).includes(collection.id)).map((item) => item.id),
+          updatedAt: Date.now(),
+        })),
+      };
+    });
+  };
+
+  const saveIdeaCategory = (category: IdeaCategory) => {
+    const duplicate = data.ideaCategories.find((item) => item.id !== category.id && item.name.toLocaleLowerCase('pt-BR') === category.name.toLocaleLowerCase('pt-BR'));
+    if (duplicate) {
+      notify('Já existe uma categoria com esse nome.');
+      return;
+    }
+    update((current) => {
+      const previous = current.ideaCategories.find((item) => item.id === category.id);
+      return {
+        ...current,
+        ideaCategories: previous
+          ? current.ideaCategories.map((item) => item.id === category.id ? category : item)
+          : [...current.ideaCategories, category],
+        ideas: previous && previous.name !== category.name
+          ? current.ideas.map((idea) => idea.category === previous.name ? { ...idea, category: category.name, updatedAt: Date.now(), activity: [{ id: createId(), action: `Categoria alterada para ${category.name}`, createdAt: Date.now() }, ...(idea.activity || [])].slice(0, 50) } : idea)
+          : current.ideas,
+      };
+    });
+  };
+
+  const deleteIdeaCategory = (category: IdeaCategory) => update((current) => ({
+    ...current,
+    ideaCategories: current.ideaCategories.filter((item) => item.id !== category.id),
+    ideas: current.ideas.map((idea) => idea.category === category.name ? { ...idea, category: '', updatedAt: Date.now() } : idea),
+  }));
+
+  const saveIdeaCollection = (collection: IdeaCollection) => update((current) => ({
+    ...current,
+    ideaCollections: current.ideaCollections.some((item) => item.id === collection.id)
+      ? current.ideaCollections.map((item) => item.id === collection.id ? collection : item)
+      : [...current.ideaCollections, collection],
+  }));
+
+  const moveIdeaCollection = (collectionId: string, direction: -1 | 1) => update((current) => {
+    const index = current.ideaCollections.findIndex((collection) => collection.id === collectionId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= current.ideaCollections.length) return current;
+    const ideaCollections = [...current.ideaCollections];
+    [ideaCollections[index], ideaCollections[target]] = [ideaCollections[target], ideaCollections[index]];
+    return { ...current, ideaCollections };
+  });
+
+  const deleteIdeaCollection = (collection: IdeaCollection) => update((current) => ({
+    ...current,
+    ideaCollections: current.ideaCollections.filter((item) => item.id !== collection.id),
+    ideas: current.ideas.map((idea) => ({
+      ...idea,
+      collectionIds: (idea.collectionIds || []).filter((id) => id !== collection.id),
+    })),
+  }));
+
+  const permanentlyDeleteIdea = (idea: Idea) => update((current) => ({
+    ...current,
+    ideas: current.ideas.filter((item) => item.id !== idea.id),
+    ideaCollections: current.ideaCollections.map((collection) => ({
+      ...collection,
+      ideaIds: collection.ideaIds.filter((id) => id !== idea.id),
+    })),
+  }));
+
+  const createTaskFromIdea = (idea: Idea, form: Pick<DashboardTask, 'title' | 'description' | 'projectId' | 'priority' | 'dueAt' | 'estimatedMinutes' | 'category' | 'status'>) => {
+    const now = Date.now();
+    const id = createId();
+    const task: DashboardTask = {
+      ...form,
+      id,
+      day: '',
+      dependsOnId: '',
+      tags: [...(idea.tags || [])],
+      startAt: '',
+      actualMinutes: 0,
+      dueAt: form.dueAt || '',
+      scheduledAt: '',
+      recurrence: 'Não repetir',
+      subtasks: [],
+      notes: '',
+      history: [{ id: createId(), action: `Criada a partir da ideia: ${idea.title || idea.text.slice(0, 60)}`, createdAt: now }],
+      completed: form.status === 'Concluído',
+      archivedAt: '',
+      createdAt: now,
+      updatedAt: now,
+    };
+    update((current) => ({
+      ...current,
+      tasks: [task, ...current.tasks],
+      projects: task.projectId
+        ? current.projects.map((project) => project.id === task.projectId
+            ? { ...project, activity: [{ id: createId(), action: `Tarefa criada a partir de uma ideia: ${task.title}`, createdAt: now }, ...project.activity] }
+            : project)
+        : current.projects,
+      ideas: current.ideas.map((item) => item.id === idea.id ? {
+        ...item,
+        status: 'converted_task',
+        conversionTaskIds: [...(item.conversionTaskIds || []), id],
+        conversions: [...(item.conversions || []), { type: 'task', targetId: id, createdAt: now }],
+        activity: [{ id: createId(), action: `Convertida em tarefa: ${task.title}`, createdAt: now }, ...(item.activity || [])].slice(0, 50),
+        updatedAt: now,
+      } : item),
+    }));
+  };
+
+  const createProjectFromIdea = (idea: Idea, form: Pick<DashboardProject, 'name' | 'description' | 'objective' | 'category' | 'priority' | 'startAt' | 'dueAt' | 'status'>) => {
+    const now = Date.now();
+    const id = createId();
+    const project: DashboardProject = {
+      ...form,
+      id,
+      color: '#F59E0B',
+      icon: 'folder',
+      startAt: form.startAt || '',
+      dueAt: form.dueAt || '',
+      createdAt: now,
+      archivedAt: '',
+      phases: [],
+      milestones: [],
+      activity: [{ id: createId(), action: `Projeto criado a partir da ideia: ${idea.title || idea.text.slice(0, 60)}`, createdAt: now }],
+      files: [],
+    };
+    update((current) => ({
+      ...current,
+      projects: [project, ...current.projects],
+      ideas: current.ideas.map((item) => item.id === idea.id ? {
+        ...item,
+        projectId: project.id,
+        status: 'converted_project',
+        conversionProjectIds: [...(item.conversionProjectIds || []), project.id],
+        conversions: [...(item.conversions || []), { type: 'project', targetId: project.id, createdAt: now }],
+        activity: [{ id: createId(), action: `Convertida em projeto: ${project.name}`, createdAt: now }, ...(item.activity || [])].slice(0, 50),
+        updatedAt: now,
+      } : item),
+    }));
   };
 
   const startFocus = (options: FocusSessionConfig) => {
@@ -624,7 +917,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
 
   const handleAiAction = (action: string) => {
     setAiAction(action);
-    if (action === 'Estou perdido') setDialog('recovery');
+    navigateModule('Daily AI');
+  };
+
+  const approveDailyAiPriorities = (taskIds: string[]) => {
+    const validIds = [...new Set(taskIds)]
+      .filter((id) => data.tasks.some((task) => task.id === id && !task.archivedAt && task.status !== 'Concluído'))
+      .slice(0, 3);
+    update((current) => ({
+      ...current,
+      dailyPriorityIds: validIds,
+      tasks: current.tasks.map((task) => validIds.includes(task.id) ? { ...task, day: today } : task),
+    }));
+    setAiAction('');
   };
 
   const beginOnboarding = () => {
@@ -743,6 +1048,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
           focusHistory={data.focusHistory}
           initialTaskId={focusInitialTaskId}
           initialProjectId={focusInitialProjectId}
+          isCaptureOpen={dialog === 'idea'}
           onStart={startFocus}
           onPause={pauseFocus}
           onResume={resumeFocus}
@@ -751,8 +1057,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
           onSkipBreak={() => finishFocus(true)}
           onAnnotate={annotateFocusSession}
           onNavigate={(module, projectId) => navigateModule(module, projectId)}
+          onCaptureIdea={() => setDialog('idea')}
           onNotify={notify}
         />
+        {dialog === 'idea' && <IdeaCaptureDialog projects={data.projects} categories={data.ideaCategories} onClose={() => setDialog(null)} onSave={(draft, createAnother) => { saveIdea(draft); if (!createAnother) setDialog(null); }} />}
         {toast && <div role="status" className="fixed bottom-5 right-5 z-[90] flex max-w-[calc(100vw-2.5rem)] items-center gap-2 rounded-xl border border-white/10 bg-[#181818] px-4 py-3 text-xs text-[#E4E4E7] shadow-2xl"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#F59E0B]/10 text-[#FBBF24]"><Check className="h-3 w-3" /></span>{toast}</div>}
       </>
     );
@@ -832,8 +1140,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
               )}
 
               <MissionCard
-                mission={data.mission}
-                projectName={data.mission?.projectId ? projectName(data.mission.projectId) : undefined}
+                mission={missionForToday}
+                projectName={missionForToday?.projectId ? projectName(missionForToday.projectId) : undefined}
                 onEdit={() => setDialog('mission')}
                 onComplete={() => {
                   update((current) => current.mission ? { ...current, mission: { ...current.mission, completed: true } } : current);
@@ -860,6 +1168,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
                   <ScheduleCard
                     schedule={todaySchedule}
                     onAdd={() => setDialog('schedule')}
+                    onOpenPlanner={() => navigateModule('Calendário')}
                     onToggle={toggleSchedule}
                     onDelete={(id) => {
                       update((current) => ({ ...current, schedule: current.schedule.filter((item) => item.id !== id) }));
@@ -869,7 +1178,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
                 </div>
 
                 <div className="space-y-5">
-                  <ProgressCard tasks={todayTasks} focusMinutes={todayFocusMinutes} focusGoalMinutes={data.focusGoalMinutes} mission={data.mission} />
+                  <ProgressCard tasks={todayTasks} focusMinutes={todayFocusMinutes} focusGoalMinutes={data.focusGoalMinutes} mission={missionForToday} />
                   <FocusCard
                     activeFocus={data.activeFocus}
                     activeTask={activeTask}
@@ -888,10 +1197,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
                     onAdd={() => navigateModule('Projetos')}
                     onOpen={() => navigateModule('Projetos')}
                   />
+                  <section className="rounded-2xl border border-white/[0.08] bg-[#101010] p-4">
+                    <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold text-white">Cofre de Ideias</p><p className="mt-1 text-[10px] text-[#71717A]">{data.ideas.filter((idea) => (idea.status || 'inbox') === 'inbox').length} ideia(s) na caixa de entrada</p></div><button type="button" onClick={() => navigateModule('Cofre de ideias')} className="text-[10px] text-[#FBBF24] hover:text-white">Abrir cofre</button></div>
+                    {data.ideas.filter((idea) => idea.status !== 'trash' && idea.status !== 'archived').slice(0, 3).map((idea) => <button key={idea.id} type="button" onClick={() => navigateModule('Cofre de ideias')} className="mt-3 block w-full truncate border-t border-white/[0.06] pt-2 text-left text-[11px] text-[#A1A1AA] hover:text-white">{idea.title?.trim() || idea.text.split(/\s+/).slice(0, 10).join(' ') || idea.link || 'Ideia sem título'}</button>)}
+                    <button type="button" onClick={() => setDialog('idea')} className="mt-3 w-full rounded-lg border border-[#F59E0B]/20 px-3 py-2 text-[10px] text-[#FBBF24] hover:bg-[#F59E0B]/[0.05]">+ Captura rápida</button>
+                  </section>
                   <DailyAiCard task={recommendedTask} action={aiAction} onChoose={handleAiAction} />
                   <AlertsCard messages={alerts} onDefineMission={() => setDialog('mission')} />
                 </div>
               </div>
+              <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-[#101010] p-4 sm:p-5">
+                <div className="flex items-start gap-3">
+                  <span className={`mt-0.5 rounded-lg p-2 ${todayReview?.status === 'completed' ? 'bg-emerald-500/10 text-emerald-300' : 'bg-[#F59E0B]/10 text-[#FBBF24]'}`}>
+                    {todayReview?.status === 'completed' ? <Check className="h-4 w-4" /> : <MoonStar className="h-4 w-4" />}
+                  </span>
+                  <div>
+                    <p className="text-xs font-semibold text-white">{todayReview?.status === 'completed' ? 'Encerramento de hoje concluído' : todayReview ? 'Seu encerramento está salvo como rascunho' : 'Feche o dia com clareza'}</p>
+                    <p className="mt-1 text-[10px] leading-4 text-[#71717A]">
+                      {todayReview?.status === 'completed'
+                        ? `Entrega: ${todayReview.mainDelivery || 'não informada'}${todayReview.tomorrowMission ? ` · Amanhã: ${todayReview.tomorrowMission}` : ''}`
+                        : dailyReviews.find((item) => item.status === 'completed')?.mainDelivery
+                          ? `Última revisão: ${dailyReviews.find((item) => item.status === 'completed')?.mainDelivery}`
+                          : 'Registre entregas, reorganize pendências e prepare a primeira tarefa de amanhã.'}
+                    </p>
+                    {data.nextDayPlan?.mission && <p className="mt-1 text-[10px] text-[#FBBF24]">Próxima missão: {data.nextDayPlan.mission}{data.nextDayPlan.firstTaskId ? ` · Primeira tarefa: ${data.tasks.find((task) => task.id === data.nextDayPlan?.firstTaskId)?.title || 'ver tarefa'}` : ''}</p>}
+                  </div>
+                </div>
+                <button type="button" onClick={() => navigateModule('Encerramento do dia')} className="rounded-lg border border-[#F59E0B]/20 px-3.5 py-2.5 text-[10px] font-medium text-[#FBBF24] hover:bg-[#F59E0B]/[0.05]">{todayReview?.status === 'completed' ? 'Ver encerramento' : todayReview ? 'Continuar revisão' : 'Iniciar encerramento'}</button>
+              </section>
             </div>
           ) : activeModule === 'Tarefas' ? (
             <TaskManagerPage
@@ -900,6 +1233,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
               projects={data.projects}
               focusHistory={data.focusHistory}
               initialProjectId={taskProjectFilterId}
+              initialTaskId={taskOpenId}
               onSave={saveManagedTask}
               onDelete={deleteTask}
               onUpdate={updateTaskRecord}
@@ -923,27 +1257,117 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
               onStartFocus={startProjectFocus}
             />
           ) : activeModule === 'Cofre de ideias' ? (
-            <section className="rounded-2xl border border-white/[0.08] bg-[#101010] p-5 sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div><h1 className="text-lg font-semibold text-white">Cofre de ideias</h1><p className="mt-1 text-xs text-[#A1A1AA]">{data.ideas.length} ideia(s) capturada(s)</p></div>
-                <button type="button" onClick={() => setDialog('idea')} className="rounded-lg bg-[#F59E0B] px-3 py-2 text-xs font-semibold text-black hover:bg-[#FBBF24]">+ Capturar ideia</button>
-              </div>
-              {data.ideas.length ? (
-                <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  {data.ideas.map((idea) => (
-                    <article key={idea.id} className={`rounded-xl border p-4 transition-colors ${newIdeaId === idea.id ? 'border-[#F59E0B]/30 bg-[#F59E0B]/[0.035]' : 'border-white/[0.07] bg-white/[0.02]'}`}>
-                      <div className="flex items-center justify-between gap-2"><span className="rounded-full bg-white/[0.06] px-2 py-1 text-[10px] text-[#A1A1AA]">{idea.category}</span><button type="button" onClick={() => { update((current) => ({ ...current, ideas: current.ideas.filter((item) => item.id !== idea.id) })); notify('Ideia removida.'); }} className="text-[10px] text-[#71717A] hover:text-red-400">Excluir</button></div>
-                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#E4E4E7]">{idea.text}</p>
-                      {idea.link && <a href={idea.link} target="_blank" rel="noreferrer" className="mt-3 block truncate text-xs text-[#FBBF24] underline decoration-[#F59E0B]/30 underline-offset-2">{idea.link}</a>}
-                      {idea.attachmentName && idea.attachmentData && <a href={idea.attachmentData} download={idea.attachmentName} className="mt-3 block truncate text-xs text-[#FBBF24] underline decoration-[#F59E0B]/30 underline-offset-2">Baixar anexo: {idea.attachmentName}</a>}
-                      <p className="mt-3 text-[10px] text-[#71717A]">{projectName(idea.projectId) || 'Sem projeto'} · {new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium' }).format(new Date(idea.createdAt))}</p>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-6 rounded-xl border border-dashed border-white/10 p-10 text-center"><Lightbulb className="mx-auto h-6 w-6 text-[#52525B]" /><p className="mt-3 text-sm text-white">Seu cofre está vazio.</p><p className="mt-1 text-xs text-[#71717A]">Capture uma ideia para guardá-la sem interromper o que está fazendo.</p></div>
-              )}
-            </section>
+            <IdeaVaultPage
+              ideas={data.ideas}
+              categories={data.ideaCategories}
+              collections={data.ideaCollections}
+              projects={data.projects}
+              tasks={data.tasks}
+              searchValue={search}
+              onSearch={setSearch}
+              onCreate={saveIdea}
+              onUpdate={updateIdeaRecord}
+              onDeletePermanently={permanentlyDeleteIdea}
+              onSaveCategory={saveIdeaCategory}
+              onDeleteCategory={deleteIdeaCategory}
+              onSaveCollection={saveIdeaCollection}
+              onDeleteCollection={deleteIdeaCollection}
+              onMoveCollection={moveIdeaCollection}
+              onCreateTask={createTaskFromIdea}
+              onCreateProject={createProjectFromIdea}
+              onNavigate={(module, targetId) => navigateModule(module, module === 'Projetos' ? targetId : undefined, module === 'Tarefas' ? targetId : undefined)}
+              onNotify={notify}
+            />
+          ) : activeModule === 'Daily AI' ? (
+            <DailyAiPage
+              data={data}
+              initialAction={aiAction}
+              onClearInitialAction={() => setAiAction('')}
+              onOpenTask={(taskId) => navigateModule('Tarefas', undefined, taskId)}
+              onOpenProject={(projectId) => navigateModule('Projetos', projectId)}
+              onOpenIdeas={() => navigateModule('Cofre de ideias')}
+              onStartFocus={startTaskFocus}
+              onApprovePriorities={approveDailyAiPriorities}
+              onNotify={notify}
+            />
+          ) : activeModule === 'Calendário' ? (
+            <CalendarPlannerPage
+              schedule={data.schedule}
+              tasks={data.tasks}
+              projects={data.projects}
+              onSaveBlock={savePlannerBlock}
+              onDeleteBlock={deletePlannerBlock}
+              onScheduleTask={scheduleTaskFromPlanner}
+              onUpdateScheduledTask={updatePlannerTaskSchedule}
+              onOpenTask={(taskId) => navigateModule('Tarefas', undefined, taskId)}
+              onStartFocus={startTaskFocus}
+              onOpenDailyAi={(action) => {
+                setAiAction(action || '');
+                navigateModule('Daily AI');
+              }}
+              onNotify={notify}
+            />
+          ) : activeModule === 'Encerramento do dia' ? (
+            <DailyClosePage
+              data={data}
+              onComplete={(review, nextDayPlan) => {
+                setDailyReviews((current) => [review, ...current.filter((item) => item.reviewDate !== review.reviewDate)]);
+                update((current) => ({ ...current, nextDayPlan }));
+              }}
+              onCreateTask={(title, day) => {
+                const now = Date.now();
+                const taskId = createId();
+                update((current) => ({
+                  ...current,
+                  tasks: [...current.tasks, {
+                    id: taskId, title, description: '', projectId: '', category: '', tags: [],
+                    day, dependsOnId: '', status: 'A fazer', priority: 'Média', startAt: '',
+                    estimatedMinutes: 25, actualMinutes: 0, dueAt: '', scheduledAt: '', scheduledDay: '',
+                    recurrence: 'Não repetir', subtasks: [], notes: '', history: [],
+                    completed: false, archivedAt: '', createdAt: now, updatedAt: now,
+                  }],
+                }));
+                return taskId;
+              }}
+              onApplyTaskAction={(task, action, targetDate) => {
+                if (action === 'split') {
+                  notify(`“${task.title}” foi mantida. Divisão automática ainda não está disponível.`);
+                  return;
+                }
+                if (action === 'cancel') {
+                  deleteTask(task);
+                  return;
+                }
+                const now = Date.now();
+                if (action === 'archive') {
+                  update((current) => ({
+                    ...current,
+                    tasks: current.tasks.map((item) => item.id === task.id ? { ...item, archivedAt: new Date(now).toISOString(), updatedAt: now, history: [{ id: createId(), action: 'Tarefa arquivada no encerramento do dia', createdAt: now }, ...item.history] } : item),
+                    dailyPriorityIds: current.dailyPriorityIds.filter((id) => id !== task.id),
+                    schedule: current.schedule.filter((item) => item.taskId !== task.id),
+                  }));
+                  return;
+                }
+                const nextDay = action === 'tomorrow' ? localDateKey(new Date(new Date(`${today}T12:00:00`).getTime() + 86_400_000)) : action === 'choose_date' ? targetDate : '';
+                update((current) => ({
+                  ...current,
+                  tasks: current.tasks.map((item) => item.id === task.id ? {
+                    ...item,
+                    day: nextDay,
+                    scheduledAt: '',
+                    scheduledDay: '',
+                    updatedAt: now,
+                    history: [{ id: createId(), action: nextDay ? `Replanejada para ${nextDay} pelo encerramento do dia` : 'Data removida no encerramento do dia', createdAt: now }, ...item.history],
+                  } : item),
+                  schedule: current.schedule.filter((item) => item.taskId !== task.id),
+                  dailyPriorityIds: current.dailyPriorityIds.filter((id) => id !== task.id),
+                }));
+              }}
+              onSaveIdea={saveIdea}
+              onOpenTask={(taskId) => navigateModule('Tarefas', undefined, taskId)}
+              onOpenDailyAi={(action) => { setAiAction(action); navigateModule('Daily AI'); }}
+              onNotify={notify}
+            />
           ) : activeModule === 'Configurações' ? (
             <section className="max-w-2xl rounded-2xl border border-white/[0.08] bg-[#101010] p-5 sm:p-6">
               <h1 className="text-lg font-semibold text-white">Configurações locais</h1>
@@ -964,11 +1388,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onExit }) => {
         </main>
       </div>
 
-      {dialog === 'mission' && <MissionDialog mission={data.mission} projects={data.projects} onClose={() => setDialog(null)} onSave={saveMission} />}
+      {dialog === 'mission' && <MissionDialog mission={missionForToday} projects={data.projects} onClose={() => setDialog(null)} onSave={saveMission} />}
       {dialog === 'task' && <TaskDialog task={editingTask} tasks={todayTasks} projects={data.projects} onClose={() => { setDialog(null); setEditingTask(null); }} onSave={saveTask} />}
       {dialog === 'schedule' && <ScheduleDialog onClose={() => setDialog(null)} onSave={saveSchedule} />}
-      {dialog === 'idea' && <IdeaDialog projects={data.projects} onClose={() => setDialog(null)} onSave={saveIdea} />}
-      {dialog === 'recovery' && <RecoveryDialog nextTask={recommendedTask} onClose={() => setDialog(null)} />}
+      {dialog === 'idea' && <IdeaCaptureDialog projects={data.projects} categories={data.ideaCategories} onClose={() => setDialog(null)} onSave={(draft, createAnother) => { saveIdea(draft); if (!createAnother) setDialog(null); }} />}
 
       {toast && (
         <div role="status" className="fixed bottom-5 right-5 z-[90] flex max-w-[calc(100vw-2.5rem)] items-center gap-2 rounded-xl border border-white/10 bg-[#181818] px-4 py-3 text-xs text-[#E4E4E7] shadow-2xl">

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowLeft, Bell, BellOff, Check, CircleHelp, Clock3, Focus,
+  ArrowLeft, Bell, BellOff, Check, CircleHelp, Clock3, Focus, Lightbulb,
   Maximize2, Minimize2, Pause, Play, Search, Settings2, Volume2, VolumeX,
 } from 'lucide-react';
 import { ambientAudio, type AmbientKind } from '../../audio/ambientAudio';
@@ -27,6 +27,7 @@ interface FocusModePageProps {
   focusHistory: FocusSession[];
   initialTaskId?: string;
   initialProjectId?: string;
+  isCaptureOpen?: boolean;
   onStart: (config: FocusSessionConfig) => void;
   onPause: () => void;
   onResume: () => void;
@@ -34,7 +35,8 @@ interface FocusModePageProps {
   onStartBreak: (config: FocusSessionConfig, parentSessionId?: string) => void;
   onSkipBreak: () => void;
   onAnnotate: (sessionId: string, rating: Rating | null, notes: string) => void;
-  onNavigate: (module: 'Dashboard' | 'Tarefas' | 'Projetos', projectId?: string) => void;
+  onNavigate: (module: 'Dashboard' | 'Tarefas' | 'Projetos' | 'Cofre de ideias', projectId?: string) => void;
+  onCaptureIdea: () => void;
   onNotify: (message: string) => void;
 }
 
@@ -90,8 +92,8 @@ function loadAudioSettings(): { settings: { enabled: boolean; kind: AmbientKind;
 }
 
 export const FocusModePage: React.FC<FocusModePageProps> = ({
-  tasks, projects, dailyPriorityIds, activeFocus, focusHistory, initialTaskId, initialProjectId,
-  onStart, onPause, onResume, onFinish, onStartBreak, onSkipBreak, onAnnotate, onNavigate, onNotify,
+  tasks, projects, dailyPriorityIds, activeFocus, focusHistory, initialTaskId, initialProjectId, isCaptureOpen = false,
+  onStart, onPause, onResume, onFinish, onStartBreak, onSkipBreak, onAnnotate, onNavigate, onCaptureIdea, onNotify,
 }) => {
   const [now, setNow] = useState(Date.now());
   const [mode, setMode] = useState<(typeof modes)[number]>('Pomodoro');
@@ -205,7 +207,7 @@ export const FocusModePage: React.FC<FocusModePageProps> = ({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isEditable(event.target) || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (isCaptureOpen || isEditable(event.target) || event.altKey || event.ctrlKey || event.metaKey) return;
       if (event.code === 'Space') {
         event.preventDefault();
         if (!active) startSession();
@@ -391,6 +393,7 @@ export const FocusModePage: React.FC<FocusModePageProps> = ({
             {active && <span className="flex items-center gap-1.5 rounded-full border border-[#F59E0B]/20 bg-[#F59E0B]/[0.06] px-2.5 py-1 text-[10px] text-[#FBBF24]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#F59E0B]" />Sessão ativa</span>}
           </div>
           <div className="flex items-center gap-1">
+            <button type="button" onClick={onCaptureIdea} className="inline-flex items-center gap-1.5 rounded-lg border border-[#F59E0B]/20 px-2.5 py-2 text-[10px] text-[#FBBF24] hover:bg-[#F59E0B]/[0.06] sm:text-xs"><Lightbulb className="h-3.5 w-3.5" />Capturar ideia</button>
             <button type="button" onClick={() => setHistoryOpen((value) => !value)} className={`rounded-lg px-3 py-2 text-xs ${historyOpen ? 'bg-white/10 text-white' : 'text-[#A1A1AA] hover:text-white'}`}>Histórico</button>
             <button type="button" onClick={() => setSettingsOpen((value) => !value)} aria-label="Configurações do Focus Mode" className="rounded-lg p-2 text-[#A1A1AA] hover:bg-white/5 hover:text-white"><Settings2 className="h-4 w-4" /></button>
             <button type="button" onClick={() => setMinimal(true)} aria-label="Ativar modo minimalista" className="hidden rounded-lg px-3 py-2 text-xs text-[#A1A1AA] hover:text-white sm:block">Minimalista</button>
@@ -398,7 +401,7 @@ export const FocusModePage: React.FC<FocusModePageProps> = ({
         </header>
       )}
 
-      {minimal && <button type="button" onClick={() => setMinimal(false)} className="fixed right-4 top-4 z-20 rounded-lg border border-white/10 bg-[#101010] px-3 py-2 text-xs text-[#A1A1AA] hover:text-white">Sair do modo minimalista</button>}
+      {minimal && <div className="fixed right-4 top-4 z-20 flex gap-2"><button type="button" onClick={onCaptureIdea} className="rounded-lg border border-[#F59E0B]/20 bg-[#101010] px-3 py-2 text-xs text-[#FBBF24]"><Lightbulb className="inline h-3.5 w-3.5" /> <span className="ml-1">Capturar ideia</span></button><button type="button" onClick={() => setMinimal(false)} className="rounded-lg border border-white/10 bg-[#101010] px-3 py-2 text-xs text-[#A1A1AA] hover:text-white">Sair do modo minimalista</button></div>}
 
       <main className={`mx-auto grid max-w-[1400px] gap-6 px-4 py-6 sm:px-7 sm:py-8 ${!minimal && !active ? 'xl:grid-cols-[minmax(0,1fr)_360px]' : 'max-w-4xl'}`}>
         {!active && !minimal && (
