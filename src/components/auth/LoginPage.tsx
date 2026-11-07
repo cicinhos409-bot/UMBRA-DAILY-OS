@@ -5,9 +5,10 @@ import { AuthLayout } from './AuthLayout';
 interface LoginPageProps {
   onBack: () => void;
   onSwitchPage: (page: 'login' | 'signup') => void;
+  onEnterDashboard: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onBack, onSwitchPage }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ onBack, onSwitchPage, onEnterDashboard }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -87,6 +88,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onBack, onSwitchPage }) =>
           <ArrowRight className="h-4 w-4" />
         </button>
       </form>
+      <div className="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3.5">
+        <p className="text-[11px] leading-5 text-[#A1A1AA]">
+          Ainda sem autenticação configurada? Você pode explorar o painel com dados locais neste dispositivo.
+        </p>
+        <button
+          type="button"
+          onClick={onEnterDashboard}
+          className="mt-2 text-xs font-semibold text-[#FBBF24] transition-colors hover:text-white"
+        >
+          Abrir dashboard em modo local
+        </button>
+      </div>
     </AuthLayout>
   );
 };

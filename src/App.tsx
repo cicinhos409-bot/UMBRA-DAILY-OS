@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { ProblemSection } from './components/ProblemSection';
@@ -13,6 +13,7 @@ import { FinalCTA } from './components/FinalCTA';
 import { Footer } from './components/Footer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { LegalModal } from './components/LegalModal';
+import { DashboardPage } from './components/dashboard/DashboardPage';
 import { LoginPage } from './components/auth/LoginPage';
 import { SignupPage } from './components/auth/SignupPage';
 import { CustomCursor } from './components/motion/CustomCursor';
@@ -21,11 +22,29 @@ import { SoundController } from './components/audio/SoundController';
 import { ArrowUp } from 'lucide-react';
 import { useSound } from './hooks/useSound';
 
+type AppPage = 'login' | 'signup' | 'dashboard' | null;
+
+function isAppRoute(): boolean {
+  const route = window.location.hash;
+  return window.location.pathname === '/focus' || route.startsWith('#/projetos/') || ['#/tarefas', '#/projetos', '#/focus', '#/dashboard', '#/login', '#/signup'].includes(route);
+}
+
 export default function App() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [authPage, setAuthPage] = useState<'login' | 'signup' | null>(null);
+  const [authPage, setAuthPage] = useState<AppPage>(() => isAppRoute() ? 'dashboard' : null);
   const [legalType, setLegalType] = useState<'privacy' | 'terms' | null>(null);
   const { playClick, playModalOpen } = useSound();
+
+  useEffect(() => {
+    const handleHistoryChange = () => setAuthPage(isAppRoute() ? 'dashboard' : null);
+    window.addEventListener('popstate', handleHistoryChange);
+    return () => window.removeEventListener('popstate', handleHistoryChange);
+  }, []);
+
+  const navigateTo = (page: AppPage) => {
+    window.history.pushState({}, '', page ? `/#/${page}` : '/');
+    setAuthPage(page);
+  };
 
   const handleOpenCheckout = () => {
     playModalOpen();
@@ -34,7 +53,7 @@ export default function App() {
 
   const handleOpenLogin = () => {
     playModalOpen();
-    setAuthPage('login');
+    navigateTo('login');
   };
 
   const handleScrollToDemo = () => {
@@ -50,14 +69,18 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  if (authPage === 'dashboard') {
+    return <DashboardPage onExit={() => navigateTo(null)} />;
+  }
+
   if (authPage) {
     const sharedProps = {
-      onBack: () => setAuthPage(null),
-      onSwitchPage: setAuthPage,
+      onBack: () => navigateTo(null),
+      onSwitchPage: (page: 'login' | 'signup') => navigateTo(page),
     };
 
     return authPage === 'login'
-      ? <LoginPage {...sharedProps} />
+      ? <LoginPage {...sharedProps} onEnterDashboard={() => navigateTo('dashboard')} />
       : <SignupPage {...sharedProps} />;
   }
 
